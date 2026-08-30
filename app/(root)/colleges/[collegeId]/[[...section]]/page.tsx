@@ -31,7 +31,7 @@ export default async function CollegePage({
   const { collegeId, section } = await params;
   const selectedSection = section?.[0] ?? "overview";
 
-  if (!isSectionSlug(selectedSection) || section?.length > 1) {
+  if (!isSectionSlug(selectedSection) || (section?.length ?? 0) > 1) {
     notFound();
   }
 
