@@ -1,0 +1,253 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  issuer                String
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([issuer, accountId], map: "account_issuer_accountId_uidx")
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+
+enum CollegeType {
+  GOVERNMENT
+  PRIVATE
+  DEEMED
+  AUTONOMOUS
+}
+
+enum CourseLevel {
+  UNDERGRADUATE
+  POSTGRADUATE
+  DIPLOMA
+  DOCTORATE
+}
+
+enum StudyMode {
+  FULL_TIME
+  PART_TIME
+  ONLINE
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  PENDING
+  REJECTED
+}
+
+model College {
+  id              String       @id @default(cuid())
+
+  // Core college identity
+  name            String
+  slug            String       @unique
+  city            String?
+  state           String?
+  country         String       @default("India")
+  collegeType     CollegeType?
+  websiteUrl      String?
+
+  // Live data provider details
+  provider        String?      // Example: "COLLEGE_DB"
+  providerId      String?      // CollegeDB's external ID
+  providerType    String?      // Raw value from provider, e.g. "University"
+  sourceUrl       String?
+  lastSyncedAt    DateTime?
+
+  // Details added later from verified sources
+  overview        String?      @db.Text
+  rating          Float?
+  reviewCount     Int          @default(0)
+  totalFees       Int?
+  logoUrl         String?
+  heroImageUrl    String?
+  establishedYear Int?
+
+  courses         Course[]
+  placements      Placement[]
+  reviews         Review[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([provider, providerId])
+  @@index([name])
+  @@index([city])
+  @@index([state])
+}
+
+model Course {
+  id              String      @id @default(cuid())
+  collegeId       String
+  name            String
+  slug            String
+  level           CourseLevel
+  studyMode       StudyMode   @default(FULL_TIME)
+  durationYears   Float?
+  totalFees       Int?        // Total fee in INR
+  seats           Int?
+  eligibility     String?     @db.Text
+
+  college         College     @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  cutoffs         CollegeCutoff[]
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // A college cannot have two courses with the same slug.
+  @@unique([collegeId, slug])
+  @@index([collegeId])
+  @@index([level])
+}
+
+model Placement {
+  id                  String   @id @default(cuid())
+  collegeId           String
+  year                Int
+  averagePackage      Int?     // Annual package in INR
+  highestPackage      Int?     // Annual package in INR
+  medianPackage       Int?
+  placementPercentage Float?
+  studentsPlaced      Int?
+  topRecruiters       String[] // e.g. ["Google", "TCS", "Microsoft"]
+
+  college             College  @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // One aggregate placement record per college per year.
+  @@unique([collegeId, year])
+  @@index([collegeId])
+  @@index([year])
+}
+
+model Review {
+  id              String       @id @default(cuid())
+  collegeId       String
+  authorName      String
+  graduationYear  Int?
+  courseName      String?
+  overallRating   Float
+  academicsRating Float?
+  placementsRating Float?
+  campusRating    Float?
+  title           String
+  content         String       @db.Text
+  status          ReviewStatus @default(PUBLISHED)
+
+  college         College      @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([collegeId])
+  @@index([status])
+  @@index([overallRating])
+}
+
+model Exam {
+  id              String           @id @default(cuid())
+  name            String
+  slug            String           @unique
+  fullName        String?
+  description     String?          @db.Text
+  active          Boolean          @default(true)
+
+  cutoffs         CollegeCutoff[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model CollegeCutoff {
+  id              String   @id @default(cuid())
+  courseId        String
+  examId          String
+  year            Int
+  category        String   @default("GENERAL")
+  openingRank     Int?
+  closingRank     Int
+  round           Int      @default(1)
+
+  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  exam            Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Avoid duplicate cutoff data for the same admission round.
+  @@unique([courseId, examId, year, category, round])
+  @@index([examId, year, category, closingRank])
+  @@index([courseId])
+}
